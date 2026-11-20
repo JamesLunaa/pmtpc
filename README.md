@@ -35,3 +35,9 @@ To hear it on Windows: Sound settings → More sound settings → Recording → 
 - `receive [--port 50005] [--device NAME|INDEX] [--buffer 3] [--max-buffer 12]`: receive and play into the virtual cable (or the given device). `--buffer` is in 10 ms frames.
 - `send [--host IP] [--port 50005] [--tone HZ] [--device NAME|INDEX] [--loss RATIO]`: test sender.
 - `devices`: list audio devices.
+
+## License
+
+Copyright (C) 2026 Jose Cynon Luna
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE).
