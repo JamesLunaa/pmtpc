@@ -7,7 +7,8 @@ Use your phone as a wireless microphone for your PC. The phone streams uncompres
 ## Windows setup
 
 1. Install [VB-Cable](https://vb-audio.com/Cable/) (free virtual audio driver): extract it, run `VBCABLE_Setup_x64.exe` as administrator, click **Install Driver**, then reboot.
-2. Download `pmtpc-setup-<version>.exe` from [Releases](https://github.com/JamesLunaa/pmtpc/releases) and run it. v0.1.0 is not code-signed: SmartScreen warns (click **More info → Run anyway**), and on PCs with **Smart App Control** turned on, Windows blocks it outright. Code signing is being set up for the next release (see [Code signing policy](#code-signing-policy)). Development builds are attached to each [Actions run](https://github.com/JamesLunaa/pmtpc/actions/workflows/windows.yml) as artifacts.
+2. Download `pmtpc-setup-<version>.exe` from [Releases](https://github.com/JamesLunaa/pmtpc/releases) and run it. The app isn't code-signed, so SmartScreen may warn: click **More info → Run anyway**. Development builds are attached to each [Actions run](https://github.com/JamesLunaa/pmtpc/actions/workflows/windows.yml) as artifacts.
+   - If the installer ends with *"An Application Control policy has blocked this file"* (code 4551), **Smart App Control** is on and blocks unsigned apps with no per-app exception. Turn it off in Windows Security → App & browser control → Smart App Control settings → **Off**, then start the app from the Start menu. This disables Windows' pre-screening of unknown apps (antivirus and SmartScreen still run), and on some Windows versions it can't be turned back on without resetting Windows.
 3. **Phone Mic to PC** starts in the system tray (check the `^` overflow area). Right-click it to see the status and the **PC address** to enter in the phone app.
 4. In the app you want to use, select **CABLE Output (VB-Audio Virtual Cable)** as the microphone.
 
@@ -65,19 +66,6 @@ Run with `uv run python -m pmtpc <command>`.
 - `receive [--port 50005] [--device NAME|INDEX] [--buffer 3] [--max-buffer 12]`: receive and play into the virtual cable (or the given device). `--buffer` is in 10 ms frames.
 - `send [--host IP] [--port 50005] [--tone HZ] [--device NAME|INDEX] [--loss RATIO]`: test sender.
 - `devices`: list audio devices.
-
-## Code signing policy
-
-Windows releases are signed. Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-- Signed binaries are built by [GitHub Actions](.github/workflows/windows.yml) from this repository's source; nothing is signed from a local machine.
-- Only this project's own files are signed (`pmtpc.exe` and the installer). Bundled third-party components (Python, numpy, Pillow, pystray, PortAudio) are shipped as published by their authors.
-- VB-Cable is a separate third-party product and is not included.
-
-Team roles:
-
-- Committers and reviewers: [JamesLunaa](https://github.com/JamesLunaa)
-- Approvers: [JamesLunaa](https://github.com/JamesLunaa)
 
 ## Privacy policy
 

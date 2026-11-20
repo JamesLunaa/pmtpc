@@ -6,15 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      sign:
-        description: Sign with SignPath (each signing request needs approval in SignPath)
-        type: boolean
-        default: false
 
 permissions:
   contents: write # create releases on tags
-  actions: read # lets SignPath read job details and download the unsigned artifacts
 
 jobs:
   build:
@@ -45,18 +39,6 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "numeric=$numeric" >> $env:GITHUB_OUTPUT
 
-      # Signing runs once SignPath is set up (repo variable SIGNPATH_ORGANIZATION_ID and secret
-      # SIGNPATH_API_TOKEN), for release tags or when requested on a manual run.
-      - name: Decide signing
-        id: sign
-        run: |
-          $configured = "${{ vars.SIGNPATH_ORGANIZATION_ID }}" -ne ""
-          $wanted = "${{ github.ref_type }}" -eq "tag" -or "${{ inputs.sign }}" -eq "true"
-          if ($wanted -and -not $configured) {
-            Write-Output "::warning::SignPath is not configured; this build is unsigned and Smart App Control will block it."
-          }
-          "enabled=$("$($configured -and $wanted)".ToLower())" >> $env:GITHUB_OUTPUT
-
       - name: Build exe
         run: |
           New-Item -ItemType Directory -Force build | Out-Null
@@ -67,68 +49,15 @@ jobs:
             --paths . --hidden-import pystray._win32 `
             packaging/windows/launcher.py
 
-      - name: Upload unsigned exe
-        id: upload-exe
-        if: steps.sign.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: pmtpc-exe-unsigned
-          path: dist/pmtpc
-
-      - name: Sign exe
-        if: steps.sign.outputs.enabled == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'pmtpc' }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
-          artifact-configuration-slug: exe
-          github-artifact-id: ${{ steps.upload-exe.outputs.artifact-id }}
-          wait-for-completion-timeout-in-seconds: 3600 # leaves time to approve the request
-          output-artifact-directory: dist/pmtpc-signed
-          parameters: |
-            version: ${{ toJSON(steps.version.outputs.version) }}
-
       - name: Build installer
         run: |
           if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
             choco install innosetup --no-progress -y
             $env:PATH += ";${env:ProgramFiles(x86)}\Inno Setup 6"
           }
-          $buildDir = if ("${{ steps.sign.outputs.enabled }}" -eq "true") { "$PWD\dist\pmtpc-signed" } else { "$PWD\dist\pmtpc" }
           iscc /DAppVersion=${{ steps.version.outputs.version }} /DNumericVersion=${{ steps.version.outputs.numeric }} `
-            /DBuildDir="$buildDir" /DIconFile="$PWD\build\pmtpc.ico" /O"$PWD\dist\installer" `
+            /DBuildDir="$PWD\dist\pmtpc" /DIconFile="$PWD\build\pmtpc.ico" /O"$PWD\dist\release" `
             packaging/windows/pmtpc.iss
-
-      - name: Upload unsigned installer
-        id: upload-installer
-        if: steps.sign.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: pmtpc-setup-unsigned
-          path: dist/installer/pmtpc-setup-*.exe
-
-      - name: Sign installer
-        if: steps.sign.outputs.enabled == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'pmtpc' }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
-          artifact-configuration-slug: installer
-          github-artifact-id: ${{ steps.upload-installer.outputs.artifact-id }}
-          wait-for-completion-timeout-in-seconds: 3600
-          output-artifact-directory: dist/release
-          parameters: |
-            version: ${{ toJSON(steps.version.outputs.version) }}
-
-      - name: Collect installer
-        if: steps.sign.outputs.enabled != 'true'
-        run: |
-          New-Item -ItemType Directory -Force dist/release | Out-Null
-          Copy-Item dist/installer/pmtpc-setup-*.exe dist/release/
 
       - uses: actions/upload-artifact@v7
         with:
