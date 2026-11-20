@@ -35,14 +35,18 @@ jobs:
           } else {
             $version = "$(uv version --short)-dev.$("${{ github.sha }}".Substring(0, 7))"
           }
+          $numeric = ([regex]::Match($version, '^\d+\.\d+\.\d+')).Value + ".0"
           "version=$version" >> $env:GITHUB_OUTPUT
+          "numeric=$numeric" >> $env:GITHUB_OUTPUT
 
       - name: Build exe
         run: |
           New-Item -ItemType Directory -Force build | Out-Null
           uv run python -m pmtpc.icon build/pmtpc.ico
+          uv run python packaging/windows/version_info.py "${{ steps.version.outputs.version }}" build/version_info.txt
           uv run pyinstaller --noconfirm --windowed --name pmtpc `
-            --icon build/pmtpc.ico --paths . --hidden-import pystray._win32 `
+            --icon build/pmtpc.ico --version-file build/version_info.txt `
+            --paths . --hidden-import pystray._win32 `
             packaging/windows/launcher.py
 
       - name: Build installer
@@ -51,17 +55,17 @@ jobs:
             choco install innosetup --no-progress -y
             $env:PATH += ";${env:ProgramFiles(x86)}\Inno Setup 6"
           }
-          iscc /DAppVersion=${{ steps.version.outputs.version }} `
-            /DBuildDir="$PWD\dist\pmtpc" /DIconFile="$PWD\build\pmtpc.ico" `
+          iscc /DAppVersion=${{ steps.version.outputs.version }} /DNumericVersion=${{ steps.version.outputs.numeric }} `
+            /DBuildDir="$PWD\dist\pmtpc" /DIconFile="$PWD\build\pmtpc.ico" /O"$PWD\dist\release" `
             packaging/windows/pmtpc.iss
 
       - uses: actions/upload-artifact@v7
         with:
           name: pmtpc-setup-${{ steps.version.outputs.version }}
-          path: dist/pmtpc-setup-*.exe
+          path: dist/release/pmtpc-setup-*.exe
 
       - name: Release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/pmtpc-setup-*.exe).FullName --title "${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/release/pmtpc-setup-*.exe).FullName --title "${{ github.ref_name }}" --generate-notes
