@@ -22,7 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
 
 sealed interface StreamState {
     data object Idle : StreamState
-    data class Streaming(val host: String, val port: Int, val packetsSent: Long, val sendErrors: Long) : StreamState
+    data class Streaming(
+        val host: String,
+        val port: Int,
+        val packetsSent: Long = 0,
+        val sendErrors: Long = 0,
+        val input: String? = null,
+    ) : StreamState
     data class Failed(val message: String) : StreamState
 }
 
@@ -37,7 +43,7 @@ class MicStreamService : Service() {
         override fun run() {
             val s = streamer ?: return
             _state.value = (_state.value as? StreamState.Streaming)
-                ?.copy(packetsSent = s.packetsSent, sendErrors = s.sendErrors) ?: return
+                ?.copy(packetsSent = s.packetsSent, sendErrors = s.sendErrors, input = s.inputName) ?: return
             handler.postDelayed(this, 500)
         }
     }
@@ -50,7 +56,8 @@ class MicStreamService : Service() {
                 val host = intent.getStringExtra(EXTRA_HOST).orEmpty()
                 val port = intent.getIntExtra(EXTRA_PORT, Protocol.DEFAULT_PORT)
                 val source = MicSource.valueOf(intent.getStringExtra(EXTRA_SOURCE) ?: MicSource.STANDARD.name)
-                startStreaming(host, port, source)
+                val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, AUTO_DEVICE).takeIf { it != AUTO_DEVICE }
+                startStreaming(host, port, source, deviceId)
             }
             else -> {
                 stopStreaming()
@@ -67,7 +74,7 @@ class MicStreamService : Service() {
         super.onDestroy()
     }
 
-    private fun startStreaming(host: String, port: Int, source: MicSource) {
+    private fun startStreaming(host: String, port: Int, source: MicSource, deviceId: Int?) {
         stopStreaming()
         ServiceCompat.startForeground(
             this,
@@ -77,9 +84,11 @@ class MicStreamService : Service() {
         )
         acquireLocks()
 
-        val rawSupported = getSystemService(AudioManager::class.java)
-            .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
-        streamer = AudioStreamer(host, port, AudioStreamer.audioSourceFor(source, rawSupported)) { message ->
+        val audio = getSystemService(AudioManager::class.java)
+        val rawSupported = audio.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
+        // If the chosen mic was unplugged since it was picked, fall back to the system's choice.
+        val device = deviceId?.let(audio::findInput)
+        streamer = AudioStreamer(host, port, AudioStreamer.audioSourceFor(source, rawSupported), device) { message ->
             handler.post {
                 stopStreaming()
                 _state.value = StreamState.Failed(message)
@@ -87,7 +96,7 @@ class MicStreamService : Service() {
             }
         }.also { it.start() }
 
-        _state.value = StreamState.Streaming(host, port, 0, 0)
+        _state.value = StreamState.Streaming(host, port)
         handler.post(statsUpdater)
     }
 
@@ -149,18 +158,22 @@ class MicStreamService : Service() {
         private const val EXTRA_HOST = "host"
         private const val EXTRA_PORT = "port"
         private const val EXTRA_SOURCE = "source"
+        private const val EXTRA_DEVICE_ID = "device_id"
+        private const val AUTO_DEVICE = -1
         private const val CHANNEL_ID = "streaming"
         private const val NOTIFICATION_ID = 1
 
         private val _state = MutableStateFlow<StreamState>(StreamState.Idle)
         val state: StateFlow<StreamState> = _state
 
-        fun start(context: Context, host: String, port: Int, source: MicSource) {
+        /** [deviceId] is an [android.media.AudioDeviceInfo] id, or null to let Android pick the mic. */
+        fun start(context: Context, host: String, port: Int, source: MicSource, deviceId: Int?) {
             val intent = Intent(context, MicStreamService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_HOST, host)
                 .putExtra(EXTRA_PORT, port)
                 .putExtra(EXTRA_SOURCE, source.name)
+                .putExtra(EXTRA_DEVICE_ID, deviceId ?: AUTO_DEVICE)
             context.startForegroundService(intent)
         }
 

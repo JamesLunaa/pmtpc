@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -87,6 +89,9 @@ private fun MainScreen() {
                 ?: MicSource.STANDARD,
         )
     }
+    var deviceKey by rememberSaveable { mutableStateOf(prefs.getString("device", null)) }
+    val devices = rememberInputDevices()
+    val device = devices.firstOrNull { it.key == deviceKey }
     var permissionDenied by remember { mutableStateOf(false) }
     val state by MicStreamService.state.collectAsStateWithLifecycle()
     val streaming = state is StreamState.Streaming
@@ -99,8 +104,9 @@ private fun MainScreen() {
             putString("host", host.trim())
             putInt("port", portNumber!!)
             putString("source", source.name)
+            putString("device", deviceKey)
         }
-        MicStreamService.start(context, host.trim(), portNumber!!, source)
+        MicStreamService.start(context, host.trim(), portNumber!!, source, device?.id)
     }
 
     val permissions = buildList {
@@ -117,6 +123,7 @@ private fun MainScreen() {
 
     Column(
         Modifier
+            .verticalScroll(rememberScrollState())
             .safeDrawingPadding()
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -144,33 +151,25 @@ private fun MainScreen() {
             modifier = Modifier.fillMaxWidth(),
         )
 
+        Text("Microphone", style = MaterialTheme.typography.titleMedium)
+        OptionList(
+            options = listOf<InputDevice?>(null) + devices,
+            selected = device,
+            enabled = !streaming,
+            label = { it?.label ?: "Automatic" },
+            description = { if (it == null) "Let Android choose (usually a plugged-in mic)" else null },
+            onSelect = { deviceKey = it?.key },
+        )
+
         Text("Microphone mode", style = MaterialTheme.typography.titleMedium)
-        Column(Modifier.selectableGroup()) {
-            MicSource.entries.forEach { option ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = source == option,
-                            enabled = !streaming,
-                            role = Role.RadioButton,
-                            onClick = { source = option },
-                        )
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = source == option, onClick = null, enabled = !streaming)
-                    Column(Modifier.padding(start = 12.dp)) {
-                        Text(option.label, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            option.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
+        OptionList(
+            options = MicSource.entries,
+            selected = source,
+            enabled = !streaming,
+            label = { it.label },
+            description = { it.description },
+            onSelect = { source = it },
+        )
 
         Button(
             onClick = {
@@ -192,12 +191,53 @@ private fun MainScreen() {
 }
 
 @Composable
+private fun <T> OptionList(
+    options: List<T>,
+    selected: T,
+    enabled: Boolean,
+    label: (T) -> String,
+    description: (T) -> String?,
+    onSelect: (T) -> Unit,
+) {
+    Column(Modifier.selectableGroup()) {
+        options.forEach { option ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = option == selected,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(option) },
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = option == selected, onClick = null, enabled = enabled)
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(label(option), style = MaterialTheme.typography.bodyLarge)
+                    description(option)?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun StatusText(state: StreamState, permissionDenied: Boolean) {
     val (text, isError) = when {
         permissionDenied && state !is StreamState.Streaming ->
             "Microphone permission is required to stream." to true
         state is StreamState.Streaming -> buildString {
-            append("Streaming to ${state.host}:${state.port}\n${state.packetsSent} packets sent")
+            append("Streaming to ${state.host}:${state.port}")
+            state.input?.let { append("\nRecording from: $it") }
+            append("\n${state.packetsSent} packets sent")
             if (state.sendErrors > 0) append(", ${state.sendErrors} send errors")
         } to false
         state is StreamState.Failed -> "Error: ${state.message}" to true
