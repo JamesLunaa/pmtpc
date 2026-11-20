@@ -1,20 +1,29 @@
 """PC side: receive audio packets over UDP and play them to an output device."""
 
 import socket
-import sys
 import threading
+from typing import Any
 
 import numpy as np
 import sounddevice as sd
 
+from pmtpc.devices import resolve_output
 from pmtpc.jitter import JitterBuffer
 from pmtpc.protocol import CHANNELS, FRAME_SAMPLES, SAMPLE_RATE, Packet, PacketError
 
 
 class Receiver:
-    def __init__(self, port: int, device: int | str | None = None, target_frames: int = 3, max_frames: int = 12):
+    def __init__(
+        self,
+        port: int,
+        device: int | str | None = None,
+        extra_settings: Any = None,
+        target_frames: int = 3,
+        max_frames: int = 12,
+    ):
         self.port = port
         self.device = device
+        self.extra_settings = extra_settings
         self.jitter = JitterBuffer(FRAME_SAMPLES, target_frames, max_frames)
         self.sender: tuple[str, int] | None = None
         self.bad_packets = 0
@@ -34,6 +43,7 @@ class Receiver:
             blocksize=FRAME_SAMPLES,
             latency="low",
             device=self.device,
+            extra_settings=self.extra_settings,
             callback=self._audio_callback,
         )
         print(f"Listening on UDP :{self.port}, output: {sd.query_devices(stream.device)['name']}")
@@ -82,17 +92,6 @@ class Receiver:
         )
 
 
-def default_output_device() -> int | str | None:
-    """On Linux, PortAudio's ALSA `default` may have no outputs, so prefer the PipeWire/Pulse plugs."""
-    if sys.platform.startswith("linux"):
-        names = {d["name"] for d in sd.query_devices() if d["max_output_channels"] > 0}
-        for name in ("pipewire", "pulse"):
-            if name in names:
-                return name
-    return None
-
-
 def receive(port: int, device: int | str | None = None, target_frames: int = 3, max_frames: int = 12) -> None:
-    if device is None:
-        device = default_output_device()
-    Receiver(port, device, target_frames, max_frames).run()
+    device, extra_settings = resolve_output(device)
+    Receiver(port, device, extra_settings, target_frames, max_frames).run()
