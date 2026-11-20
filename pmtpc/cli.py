@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 from pmtpc.protocol import DEFAULT_PORT
 
@@ -24,9 +25,13 @@ def main(argv: list[str] | None = None) -> None:
     send.add_argument("--tone", type=float, metavar="HZ", help="send a sine tone instead of the mic")
     send.add_argument("--loss", type=float, default=0.0, help="simulated packet loss ratio, e.g. 0.05")
 
+    tray = sub.add_parser("tray", help="run the receiver as a system tray app")
+    tray.add_argument("--port", type=int, default=DEFAULT_PORT)
+
     sub.add_parser("devices", help="list audio devices")
 
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     if args.command == "receive":
         from pmtpc.receiver import receive
@@ -40,6 +45,10 @@ def main(argv: list[str] | None = None) -> None:
             sender.stream_tone(args.tone)
         else:
             sender.stream_mic(args.device)
+    elif args.command == "tray":
+        from pmtpc.tray import main as tray_main
+
+        tray_main(args.port)
     elif args.command == "devices":
         import sounddevice as sd
 

@@ -6,17 +6,24 @@ Use your phone as a wireless microphone for your PC. The phone streams uncompres
 
 ## Windows setup
 
-1. Install [VB-Cable](https://vb-audio.com/Cable/) (free virtual audio driver): extract it, run `VBCABLE_Setup_x64.exe` as administrator, then reboot.
-2. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then in the project folder run:
-   ```
-   uv sync
-   ```
-3. Start the receiver:
-   ```
-   uv run python -m pmtpc receive
-   ```
-   It should print `output: CABLE Input (VB-Audio Virtual Cable)`. When Windows Firewall asks, allow access on **Private networks**, and make sure your Wi-Fi is set to Private, not Public.
+1. Install [VB-Cable](https://vb-audio.com/Cable/) (free virtual audio driver): extract it, run `VBCABLE_Setup_x64.exe` as administrator, click **Install Driver**, then reboot.
+2. Download `pmtpc-setup-<version>.exe` from [Releases](https://github.com/JamesLunaa/pmtpc/releases) and run it. The app isn't code-signed yet, so Windows SmartScreen may warn: click **More info → Run anyway**. Development builds are attached to each [Actions run](https://github.com/JamesLunaa/pmtpc/actions/workflows/windows.yml) as artifacts.
+3. **Phone Mic to PC** starts in the system tray (check the `^` overflow area). Right-click it to see the status and the **PC address** to enter in the phone app.
 4. In the app you want to use, select **CABLE Output (VB-Audio Virtual Cable)** as the microphone.
+
+The installer allows the app through Windows Firewall on **private** networks only. If the phone can't connect, make sure your Wi-Fi is set to Private: Settings → Network & Internet → Wi-Fi → your network → Private network.
+
+Tray icon colors: grey = waiting for the phone, blue = receiving, red = problem (hover or right-click for details). The log is at `%LOCALAPPDATA%\pmtpc\pmtpc.log` (tray menu → Open log).
+
+### Running from source
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then in the project folder:
+
+```
+uv sync
+uv run python -m pmtpc tray      # tray app
+uv run python -m pmtpc receive   # console receiver with live stats
+```
 
 ## Android app
 
@@ -51,6 +58,10 @@ To hear it on Windows: Sound settings → More sound settings → Recording → 
 
 ## Commands
 
+Run with `uv run python -m pmtpc <command>`.
+
+
+- `tray [--port 50005]`: run the receiver as a system tray app (what the Windows installer launches).
 - `receive [--port 50005] [--device NAME|INDEX] [--buffer 3] [--max-buffer 12]`: receive and play into the virtual cable (or the given device). `--buffer` is in 10 ms frames.
 - `send [--host IP] [--port 50005] [--tone HZ] [--device NAME|INDEX] [--loss RATIO]`: test sender.
 - `devices`: list audio devices.

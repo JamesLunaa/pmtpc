@@ -1,5 +1,6 @@
 """Pick the output device the receiver plays into, which the OS then exposes as a microphone."""
 
+import logging
 import sys
 from typing import Any
 
@@ -9,6 +10,8 @@ import sounddevice as sd
 VB_CABLE_PLAYBACK = "CABLE Input"
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
 WASAPI = "Windows WASAPI"
+
+log = logging.getLogger(__name__)
 
 
 def resolve_output(device: int | str | None) -> tuple[int | str | None, Any]:
@@ -25,15 +28,16 @@ def _resolve_windows(device: int | str | None) -> tuple[int | str | None, Any]:
     if device is None:
         device = _find_output(VB_CABLE_PLAYBACK, wasapi)
         if device is None:
-            print(
-                f"WARNING: VB-Cable not found, playing to the default output instead.\n"
-                f"Install it from {VB_CABLE_URL} to get a virtual microphone.",
-                file=sys.stderr,
+            log.warning(
+                "VB-Cable not found, playing to the default output instead. "
+                "Install it from %s to get a virtual microphone.",
+                VB_CABLE_URL,
             )
             if wasapi is not None:
                 device = sd.query_hostapis(wasapi)["default_output_device"]
     elif isinstance(device, str):
-        device = _find_output(device, wasapi) or device
+        found = _find_output(device, wasapi)
+        device = device if found is None else found
 
     if wasapi is not None and isinstance(device, int) and sd.query_devices(device)["hostapi"] == wasapi:
         # Shared-mode WASAPI only accepts the device's mix format; let Windows resample if it isn't 48 kHz.
