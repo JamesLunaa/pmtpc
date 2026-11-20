@@ -1,0 +1,67 @@
+name: Windows build
+
+on:
+  push:
+    branches: [dev, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create releases on tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - name: Install dependencies
+        run: uv sync --group build
+
+      - name: Test
+        run: uv run pytest -q
+
+      - name: Version
+        id: version
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          } else {
+            $version = "$(uv version --short)-dev.$("${{ github.sha }}".Substring(0, 7))"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build exe
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          uv run python -m pmtpc.icon build/pmtpc.ico
+          uv run pyinstaller --noconfirm --windowed --name pmtpc `
+            --icon build/pmtpc.ico --paths . --hidden-import pystray._win32 `
+            packaging/windows/launcher.py
+
+      - name: Build installer
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            choco install innosetup --no-progress -y
+            $env:PATH += ";${env:ProgramFiles(x86)}\Inno Setup 6"
+          }
+          iscc /DAppVersion=${{ steps.version.outputs.version }} `
+            /DBuildDir="$PWD\dist\pmtpc" /DIconFile="$PWD\build\pmtpc.ico" `
+            packaging/windows/pmtpc.iss
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pmtpc-setup-${{ steps.version.outputs.version }}
+          path: dist/pmtpc-setup-*.exe
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist/pmtpc-setup-*.exe).FullName --title "${{ github.ref_name }}" --generate-notes

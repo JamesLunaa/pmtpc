@@ -27,3 +27,13 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Android / Gradle
+.gradle/
+.kotlin/
+local.properties
+*.jks
+*.keystore
+
+# PyInstaller
+*.spec
