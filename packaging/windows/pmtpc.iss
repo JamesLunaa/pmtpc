@@ -1,8 +1,11 @@
 ; Inno Setup script for the Windows installer. Built by .github/workflows/windows.yml:
-;   iscc /DAppVersion=0.1.0 /DBuildDir=..\..\dist\pmtpc /DIconFile=..\..\build\pmtpc.ico pmtpc.iss
+;   iscc /DAppVersion=0.1.0 /DNumericVersion=0.1.0.0 /DBuildDir=..\..\dist\pmtpc /DIconFile=..\..\build\pmtpc.ico pmtpc.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
+#endif
+#ifndef NumericVersion
+  #define NumericVersion "0.0.0.0"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\..\dist\pmtpc"
@@ -20,13 +23,21 @@ AppId={{EF16216D-DFAA-489F-955E-B7E0224BC7FB}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Jose Cynon Luna
+AppCopyright=Copyright (C) 2026 Jose Cynon Luna
+VersionInfoVersion={#NumericVersion}
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#NumericVersion}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoTextVersion={#AppVersion}
+VersionInfoCompany=Jose Cynon Luna
+VersionInfoDescription={#AppName} Setup
 AppPublisherURL=https://github.com/JamesLunaa/pmtpc
 AppSupportURL=https://github.com/JamesLunaa/pmtpc/issues
 DefaultDirName={autopf}\pmtpc
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
-; Admin rights are needed to add the firewall rule.
+; Admin rights are needed for Program Files and the firewall rule.
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -40,6 +51,7 @@ WizardStyle=modern
 CloseApplications=yes
 
 [Tasks]
+Name: "firewall"; Description: "Allow {#AppName} through Windows Firewall on private networks (needed for the phone to connect)"
 Name: "autostart"; Description: "Start {#AppName} when Windows starts"; Flags: unchecked
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
@@ -55,7 +67,7 @@ Name: "{autostartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: autostart
 ; Replace any rule from a previous install, then allow inbound audio on private networks only,
 ; so nobody on public Wi-Fi can stream into the virtual mic.
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#FirewallRule}"""; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{#FirewallRule}"" dir=in action=allow program=""{app}\{#AppExe}"" protocol=UDP profile=private,domain enable=yes"; Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{#FirewallRule}"" dir=in action=allow program=""{app}\{#AppExe}"" protocol=UDP profile=private,domain enable=yes"; Flags: runhidden; Tasks: firewall
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
