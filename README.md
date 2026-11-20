@@ -2,7 +2,7 @@
 
 Use your phone as a wireless microphone for your PC. The phone streams uncompressed 48 kHz audio over Wi-Fi (UDP), and the PC exposes it as a microphone that any app (Discord, OBS, Zoom, ...) can select.
 
-> Status: the PC receiver works. The Android app is not built yet; use the test sender (below) in its place.
+> Status: early development. The PC receiver (Windows/Linux) and the Android app both work at a basic level; you enter the PC's IP manually.
 
 ## Windows setup
 
@@ -17,6 +17,25 @@ Use your phone as a wireless microphone for your PC. The phone streams uncompres
    ```
    It should print `output: CABLE Input (VB-Audio Virtual Cable)`. When Windows Firewall asks, allow access on **Private networks**, and make sure your Wi-Fi is set to Private, not Public.
 4. In the app you want to use, select **CABLE Output (VB-Audio Virtual Cable)** as the microphone.
+
+## Android app
+
+Requires Android 8.0 or newer. Build it with JDK 17+ and the Android SDK:
+
+```
+cd android
+./gradlew assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+Or copy `android/app/build/outputs/apk/debug/app-debug.apk` to the phone and open it (allow installing unknown apps).
+
+In the app, enter the PC's IP address (`ipconfig` on Windows), pick a microphone mode, and tap **Start**. Streaming continues with the screen off; stop it from the app or the notification. The phone and PC must be on the same Wi-Fi network.
+
+Microphone modes:
+- **Standard**: the phone's default mic processing.
+- **Raw**: unprocessed audio, for the most natural sound (falls back to minimal processing if the phone doesn't support raw capture).
+- **Voice**: noise suppression and echo cancellation, for calls in noisy rooms.
 
 ## Testing without the phone
 
