@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pystray
 
-from pmtpc.devices import VB_CABLE_PLAYBACK, VB_CABLE_URL
+from pmtpc.devices import VB_CABLE_PLAYBACK, VB_CABLE_URL, log_output_devices, vb_cable_installed
 from pmtpc.icon import ACTIVE, PROBLEM, WAITING, make_icon
 from pmtpc.protocol import DEFAULT_PORT
 from pmtpc.receiver import Receiver, create_receiver
@@ -52,6 +52,7 @@ class TrayApp:
         self.receiver: Receiver | None = None
         self.error: str | None = None
         self.ip = local_ip()
+        self.vb_cable_installed = True
         self._connected = False
         self._stop = threading.Event()
         self.icon = pystray.Icon("pmtpc", make_icon(64, WAITING), APP_NAME, menu=self._menu())
@@ -89,8 +90,18 @@ class TrayApp:
                 enabled=False,
                 visible=lambda _: self.receiver is not None,
             ),
+            item(
+                "VB-Cable needs a Windows restart to work",
+                None,
+                enabled=False,
+                visible=lambda _: self.vb_cable_missing and self.vb_cable_installed,
+            ),
             pystray.Menu.SEPARATOR,
-            item("Install VB-Cable...", lambda: webbrowser.open(VB_CABLE_URL), visible=lambda _: self.vb_cable_missing),
+            item(
+                "Install VB-Cable...",
+                lambda: webbrowser.open(VB_CABLE_URL),
+                visible=lambda _: self.vb_cable_missing and not self.vb_cable_installed,
+            ),
             item("Open recording devices", self._open_recording_devices, visible=sys.platform == "win32"),
             item("Open log", self._open_log),
             item("Quit", self._quit),
@@ -117,8 +128,12 @@ class TrayApp:
                 log.exception("Could not start audio output")
 
         if self.vb_cable_missing:
-            self._notify("VB-Cable is not installed, so no virtual microphone is available. "
-                         "Right-click the tray icon and choose Install VB-Cable.")
+            self.vb_cable_installed = vb_cable_installed()
+            if self.vb_cable_installed:
+                self._notify("VB-Cable is installed but not active yet. Restart Windows to use it as a microphone.")
+            else:
+                self._notify("VB-Cable is not installed, so no virtual microphone is available. "
+                             "Right-click the tray icon and choose Install VB-Cable.")
         elif self.error:
             self._notify(self.error[0].upper() + self.error[1:])
         threading.Thread(target=self._watch, name="pmtpc-tray", daemon=True).start()
@@ -189,4 +204,8 @@ def main(port: int = DEFAULT_PORT) -> None:
         exc_info=(a.exc_type, a.exc_value, a.exc_traceback),
     )
     log.info("Starting %s on port %d", APP_NAME, port)
+    try:
+        log_output_devices()
+    except Exception:
+        log.exception("Could not list audio devices")
     TrayApp(port).run()

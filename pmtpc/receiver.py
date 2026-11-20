@@ -4,12 +4,11 @@ import logging
 import socket
 import threading
 import time
-from typing import Any
 
 import numpy as np
 import sounddevice as sd
 
-from pmtpc.devices import resolve_output
+from pmtpc.devices import Candidate, describe, output_candidates
 from pmtpc.jitter import JitterBuffer
 from pmtpc.protocol import CHANNELS, FRAME_SAMPLES, SAMPLE_RATE, Packet, PacketError
 
@@ -23,14 +22,12 @@ class Receiver:
     def __init__(
         self,
         port: int,
-        device: int | str | None = None,
-        extra_settings: Any = None,
+        candidates: list[Candidate],
         target_frames: int = 3,
         max_frames: int = 12,
     ):
         self.port = port
-        self.device = device
-        self.extra_settings = extra_settings
+        self.candidates = candidates
         self.jitter = JitterBuffer(FRAME_SAMPLES, target_frames, max_frames)
         self.sender: tuple[str, int] | None = None
         self.output_name: str | None = None
@@ -53,21 +50,36 @@ class Receiver:
         return time.monotonic() - self._last_packet < CONNECTION_TIMEOUT
 
     def start(self) -> None:
-        self._stream = sd.OutputStream(
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
-            dtype="int16",
-            blocksize=FRAME_SAMPLES,
-            latency="low",
-            device=self.device,
-            extra_settings=self.extra_settings,
-            callback=self._audio_callback,
-        )
-        self.output_name = sd.query_devices(self._stream.device)["name"]
+        self._stream = self._open_output()
+        self.output_name = describe(self._stream.device)
         self._net = threading.Thread(target=self._net_loop, name="pmtpc-net", daemon=True)
         self._net.start()
-        self._stream.start()
         log.info("Listening on UDP :%d, output: %s", self.port, self.output_name)
+
+    def _open_output(self) -> sd.OutputStream:
+        """Open and start the first candidate device that works."""
+        error: Exception | None = None
+        for device, extra_settings in self.candidates:
+            stream = None
+            try:
+                stream = sd.OutputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype="int16",
+                    blocksize=FRAME_SAMPLES,
+                    latency="low",
+                    device=device,
+                    extra_settings=extra_settings,
+                    callback=self._audio_callback,
+                )
+                stream.start()
+                return stream
+            except (sd.PortAudioError, ValueError) as e:
+                log.warning("Could not use %s: %s", describe(device), e)
+                if stream is not None:
+                    stream.close()
+                error = e
+        raise error or RuntimeError("no audio output device available")
 
     def stop(self) -> None:
         self._stop.set()
@@ -125,8 +137,7 @@ class Receiver:
 def create_receiver(
     port: int, device: int | str | None = None, target_frames: int = 3, max_frames: int = 12
 ) -> Receiver:
-    device, extra_settings = resolve_output(device)
-    return Receiver(port, device, extra_settings, target_frames, max_frames)
+    return Receiver(port, output_candidates(device), target_frames, max_frames)
 
 
 def receive(port: int, device: int | str | None = None, target_frames: int = 3, max_frames: int = 12) -> None:
